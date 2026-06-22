@@ -489,7 +489,8 @@
 
     function renderResults(data) {
       const recs = data.recommendations;
-      queryLabel.innerHTML = `Showing <strong>${recs.length}</strong> picks similar to <strong>"${data.query}"</strong>`;
+      const queryTitle = data.query?.title ?? data.query;
+      queryLabel.innerHTML = `Showing <strong>${recs.length}</strong> picks similar to <strong>"${queryTitle}"</strong>`;
       queryLabel.style.display = 'block';
 
       if (!recs.length) {
@@ -500,13 +501,13 @@
       empty.style.display = 'none';
 
       // Find max score for bar scaling
-      const maxScore = Math.max(...recs.map(r => r.similarity_score));
+      const maxScore = Math.max(...recs.map(r => r.final_score));
 
       results.innerHTML = recs.map((r, i) => {
         const genres = r.genres.split('|').map(g =>
           `<span class="genre-tag">${g}</span>`
         ).join('');
-        const pct = maxScore > 0 ? Math.round((r.similarity_score / maxScore) * 100) : 0;
+        const pct = maxScore > 0 ? Math.round((r.final_score / maxScore) * 100) : 0;
         const delay = i * 40;
 
         return `
@@ -517,7 +518,7 @@
               <div class="card-genres">${genres}</div>
             </div>
             <div class="card-score">
-              <div class="score-num">${r.similarity_score.toFixed(2)}</div>
+              <div class="score-num">${r.final_score.toFixed(2)}</div>
               <div class="score-bar-bg">
                 <div class="score-bar-fill" style="width:${pct}%"></div>
               </div>

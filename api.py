@@ -1,28 +1,29 @@
 """
-Flask API — Movie Recommender
-------------------------------
-Exposes the recommender engine as a REST API.
-The HTML frontend (frontend/) will call these endpoints.
+Flask API — Hybrid Movie Recommender
+--------------------------------------
+Exposes the hybrid recommender engine as a REST API.
+The HTML frontend (frontend/) calls these endpoints.
 
 Endpoints:
-    GET  /recommend?title=<title>&n=<n>   → top-N recommendations
-    GET  /search?q=<query>                → partial title search
-    GET  /movie?title=<title>             → single movie metadata
-    GET  /health                          → sanity check
+    GET  /recommend?title=<title>&user_id=<id>&n=<n>&alpha=<alpha>
+                                              → top-N hybrid recommendations
+    GET  /search?q=<query>                    → partial title search
+    GET  /movie?title=<title>                 → single movie metadata
+    GET  /health                              → sanity check
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from recommender import MovieRecommender
+from src.fusion import HybridRecommender
 
 app = Flask(__name__)
 CORS(app)  # Allow the HTML frontend (different port / file://) to call us
 
-# Load once at startup — not on every request
-recommender = MovieRecommender(
-    movies_path="movies.csv",
-    ratings_path="ratings.csv",
+# Load and fit both sub-models once at startup — not on every request
+recommender = HybridRecommender(
+    movies_path="data/movies.csv",
+    ratings_path="data/ratings.csv",
 )
 
 
@@ -32,26 +33,32 @@ recommender = MovieRecommender(
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "movies_loaded": len(recommender.movies)})
+    return jsonify({
+        "status": "ok",
+        "movies_loaded": len(recommender.movies),
+    })
 
 
 @app.get("/recommend")
 def recommend():
     """
     Query params:
-        title (str, required) — movie title to base recommendations on
-        n     (int, optional) — number of results (default 5, max 20)
-    """
-    title = request.args.get("title", "").strip()
-    if not title:
-        return jsonify({"error": "Missing 'title' query parameter."}), 400
+        title   (str, optional) — seed movie for content-based signal
+        user_id (int, optional) — user for collaborative signal
+        n       (int, optional) — number of results (default 5, max 20)
+        alpha   (float, optional) — CF weight in [0,1]; auto-chosen if omitted
 
-    n = min(int(request.args.get("n", 5)), 20)  # cap at 20
+    At least one of title or user_id must be provided.
+    """
+    title = request.args.get("title", "").strip() or None
+    user_id = request.args.get("user_id", None)
+    n = min(int(request.args.get("n", 5)), 20)
+
 
     try:
-        results = recommender.recommend(title, n=n)
+        results = recommender.recommend(title=title, user_id=user_id, n=n, alpha=0.5)
         return jsonify({
-            "query": title,
+            "query": {"title": title, "user_id": user_id, "alpha": 0.5},
             "n": n,
             "recommendations": results.to_dict(orient="records"),
         })
@@ -80,7 +87,7 @@ def search():
 def movie_info():
     """
     Query params:
-        title (str, required) — exact or partial title
+        title (str, required) — exact or partial movie title
     """
     title = request.args.get("title", "").strip()
     if not title:
